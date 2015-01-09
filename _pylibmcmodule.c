@@ -534,16 +534,17 @@ static PyObject *_PylibMC_RunSetCommandSingle(PylibMC_Client *self,
         _PylibMC_SetCommand f, char *fname, PyObject *args,
         PyObject *kwds) {
     /* function called by the set/add/etc commands */
-    static char *kws[] = { "key", "val", "time", "min_compress_len", NULL };
+    static char *kws[] = { "key", "val", "time", "min_compress_len", "max_value_len", NULL };
     PyObject *key;
     PyObject *value;
     unsigned int time = 0; /* this will be turned into a time_t */
     unsigned int min_compress = 0;
+    unsigned long max_value_len = 0;
     bool success = false;
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "SO|II", kws,
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "SO|IIk", kws,
                                      &key, &value,
-                                     &time, &min_compress)) {
+                                     &time, &min_compress, &max_value_len)) {
       return NULL;
     }
 
@@ -563,7 +564,8 @@ static PyObject *_PylibMC_RunSetCommandSingle(PylibMC_Client *self,
 
     success = _PylibMC_RunSetCommand(self, f, fname,
                                      &serialized, 1,
-                                     min_compress);
+                                     min_compress,
+                                     max_value_len);
 
 cleanup:
     _PylibMC_FreeMset(&serialized);
@@ -585,15 +587,17 @@ static PyObject *_PylibMC_RunSetCommandMulti(PylibMC_Client* self,
     PyObject* key_prefix = NULL;
     unsigned int time = 0;
     unsigned int min_compress = 0;
+    unsigned long max_value_len = 0;
     PyObject * retval = NULL;
     size_t idx = 0;
 
-    static char *kws[] = { "keys", "time", "key_prefix", "min_compress_len", NULL };
+    static char *kws[] = { "keys", "time", "key_prefix", "min_compress_len", "max_value_len", NULL };
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O!|ISI", kws,
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O!|ISIk", kws,
                                      &PyDict_Type, &keys,
                                      &time, &key_prefix,
-                                     &min_compress)) {
+                                     &min_compress,
+                                     &max_value_len)) {
         return NULL;
     }
 
@@ -643,7 +647,8 @@ static PyObject *_PylibMC_RunSetCommandMulti(PylibMC_Client* self,
 
     bool allsuccess = _PylibMC_RunSetCommand(self, f, fname,
                                              serialized, nkeys,
-                                             min_compress);
+                                             min_compress,
+                                             max_value_len);
 
     if (PyErr_Occurred() != NULL) {
         goto cleanup;
@@ -870,7 +875,8 @@ static int _PylibMC_SerializeValue(PyObject* key_obj,
 static bool _PylibMC_RunSetCommand(PylibMC_Client* self,
                                    _PylibMC_SetCommand f, char *fname,
                                    pylibmc_mset* msets, size_t nkeys,
-                                   size_t min_compress) {
+                                   size_t min_compress,
+                                   unsigned long max_value_len) {
     memcached_st *mc = self->mc;
     memcached_return rc = MEMCACHED_SUCCESS;
     int pos;
@@ -911,9 +917,17 @@ static bool _PylibMC_RunSetCommand(PylibMC_Client* self,
             /* Most other implementations ignore zero-length keys, so
                we'll just do that */
             rc = MEMCACHED_NOTSTORED;
+        } else if (max_value_len != 0 && value_len > max_value_len) {
+            rc = MEMCACHED_E2BIG;
         } else {
             rc = f(mc, mset->key, mset->key_len,
                    value, value_len, mset->time, flags);
+            /*This translation is required because the low level library is
+              sending us MEMCACHED_NOTSTORED instead of MEMCACHED_DATA_EXISTS
+              like it should for adds. */
+            /*if (f == memcached_add && rc == MEMCACHED_NOTSTORED) {
+              rc = MEMCACHED_DATA_EXISTS;
+            }*/
         }
 
 #ifdef USE_ZLIB
@@ -934,6 +948,11 @@ static bool _PylibMC_RunSetCommand(PylibMC_Client* self,
           case MEMCACHED_NOTSTORED:
               mset->success = false;
               allsuccess = false;
+              break;
+          case MEMCACHED_E2BIG:
+              mset->success = false;
+              allsuccess = false;
+              error = true;
               break;
           default:
               mset->success = false;

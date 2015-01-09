@@ -139,7 +139,7 @@ static PylibMC_McErr PylibMCExc_mc_errs[] = {
     { MEMCACHED_CONNECTION_SOCKET_CREATE_FAILURE, "SocketCreateError", NULL },
     { MEMCACHED_DATA_EXISTS, "DataExists", NULL },
     { MEMCACHED_DATA_DOES_NOT_EXIST, "DataDoesNotExist", NULL },
-    //{ MEMCACHED_NOTSTORED, "NotStored", NULL },
+    { MEMCACHED_NOTSTORED, "NotStored", NULL },
     //{ MEMCACHED_STORED, "Stored", NULL },
     { MEMCACHED_NOTFOUND, "NotFound", NULL },
     { MEMCACHED_MEMORY_ALLOCATION_FAILURE, "AllocationError", NULL },
@@ -161,7 +161,7 @@ static PylibMC_McErr PylibMCExc_mc_errs[] = {
     { MEMCACHED_INVALID_HOST_PROTOCOL, "InvalidHostProtocolError", NULL },
     //{ MEMCACHED_SERVER_MARKED_DEAD,
     { MEMCACHED_UNKNOWN_STAT_KEY, "UnknownStatKey", NULL },
-    //{ MEMCACHED_E2BIG, "TooBigError", NULL },
+    { MEMCACHED_E2BIG, "TooBigError", NULL },
     { 0, NULL, NULL }
 };
 /* }}} */
@@ -286,7 +286,8 @@ static PyObject *_PylibMC_RunSetCommandMulti(PylibMC_Client* self,
 static bool _PylibMC_RunSetCommand(PylibMC_Client* self,
                                    _PylibMC_SetCommand f, char *fname,
                                    pylibmc_mset* msets, size_t nkeys,
-                                   size_t min_compress);
+                                   size_t min_compress,
+                                   size_t max_value_len);
 static int _PylibMC_Deflate(char* value, size_t value_len,
                             char** result, size_t *result_len);
 static bool _PylibMC_IncrDecr(PylibMC_Client*, pylibmc_incr*, size_t);
